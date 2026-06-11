@@ -145,6 +145,13 @@ describe('Tracker mappings', () => {
     expect(flatten(t).some((v) => v.includes('linkedin.com'))).toBe(false);
   });
 
+  it('maps a verified LinkedIn profile URL (QR vCard) to linkedInUrl', () => {
+    const c = full();
+    c['LinkedIn Profile'] = 'https://www.linkedin.com/in/ada-lovelace';
+    expect(toTrackerContact(c).linkedInUrl).toBe('https://www.linkedin.com/in/ada-lovelace');
+    expect(toTrackerCandidate(c).linkedInUrl).toBe('https://www.linkedin.com/in/ada-lovelace');
+  });
+
   it('omits empty fields and empty nested objects entirely', () => {
     const c = emptyContact();
     c['First Name'] = 'Ada';

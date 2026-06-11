@@ -96,6 +96,12 @@ function compact(obj: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v.trim() !== ''));
 }
 
+// A real profile URL (e.g. from a QR vCard) maps to Tracker's linkedInUrl
+// field; the generated people-search links do NOT - a guessed URL in a
+// structured ATS field is fabricated data. Search links ride in the note.
+export const isLinkedInProfileUrl = (url: string): boolean =>
+  /^https?:\/\/([a-z]+\.)?linkedin\.com\/(in|pub)\//i.test(url.trim());
+
 function trackerEntityBase(c: ContactData, note: string): Record<string, unknown> {
   const out: Record<string, unknown> = compact({
     firstName: c['First Name'],
@@ -104,8 +110,7 @@ function trackerEntityBase(c: ContactData, note: string): Record<string, unknown
     website: c['Website 1 - Value'],
     source: 'Business card scan',
     note,
-    // 'LinkedIn Profile' is deliberately NOT mapped to linkedInUrl: it is a
-    // fabricated people-search URL, not a verified profile. It goes in the note.
+    linkedInUrl: isLinkedInProfileUrl(c['LinkedIn Profile']) ? c['LinkedIn Profile'] : '',
   });
   const contactDetails = compact({
     email: c['E-mail 1'],
@@ -136,12 +141,13 @@ export function toTrackerCandidate(c: ContactData, note = ''): Record<string, un
 }
 
 export function buildPushNote(c: ContactData, scannedAt: string): string {
+  const li = c['LinkedIn Profile'];
   const lines = [
     `Created from business card scan on ${scannedAt}.`,
     c['Organization Name'] && `Company: ${c['Organization Name']}`,
     c['Website 1 - Value'] && `Website: ${c['Website 1 - Value']}`,
     c['Address 1'] && `Address: ${c['Address 1']}`,
-    c['LinkedIn Profile'] && `LinkedIn search link: ${c['LinkedIn Profile']}`,
+    li && (isLinkedInProfileUrl(li) ? `LinkedIn profile: ${li}` : `LinkedIn search link: ${li}`),
   ].filter(Boolean);
   return lines.join('\n');
 }
