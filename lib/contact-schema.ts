@@ -82,54 +82,57 @@ export function buildLinkedInSearchUrl(c: ContactData): string {
 
 // ---------------------------------------------------------------------------
 // ATS Tracker (TrackerRMS) field mappings.
-// Field names verified 2026-06-10 against live read-only API responses:
-// Contact list (POST /api/v1/Contact/Search) and Resource list
-// (POST /api/v1/Resource/Search). Note the casing trap: contacts use
-// `firstName`, candidates use `firstname`.
+// The create endpoints accept the FULL OBJECT shape returned by
+// GET /api/v1/Contact/{id} and GET /api/v1/Resource/{id} (verified live
+// 2026-06-11): identity fields are top-level, but email/phone nest under
+// `contactDetails` and the address under `address`. The flat *Search list
+// records use different names (and `firstname` casing for resources) - do
+// NOT map from those. A flat create payload silently drops email/phone.
+// `note` is a top-level field on the object; the separate Notes endpoint
+// 404s on this API version.
 // ---------------------------------------------------------------------------
 
 function compact(obj: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v.trim() !== ''));
 }
 
-export function toTrackerContact(c: ContactData): Record<string, string> {
-  return compact({
+function trackerEntityBase(c: ContactData, note: string): Record<string, unknown> {
+  const out: Record<string, unknown> = compact({
     firstName: c['First Name'],
     surname: c['Last Name'],
-    displayAs: `${c['First Name']} ${c['Last Name']}`.trim(),
     jobTitle: c['Organization Title'],
-    company: c['Organization Name'],
-    addressLine1: c['Address 1 - Street'],
-    addressLine2: c['Address 1 - Extended Address'],
-    town: c['Address 1 - City'],
-    county: c['Address 1 - Region'],
-    postcode: c['Address 1 - Postal Code'],
-    country: c['Country'],
-    mobilePhone: c['Phone 1'],
-    email: c['E-mail 1'],
     website: c['Website 1 - Value'],
-    contactSource: 'Business card scan',
+    source: 'Business card scan',
+    note,
     // 'LinkedIn Profile' is deliberately NOT mapped to linkedInUrl: it is a
     // fabricated people-search URL, not a verified profile. It goes in the note.
   });
-}
-
-export function toTrackerCandidate(c: ContactData): Record<string, string> {
-  return compact({
-    firstname: c['First Name'], // lowercase n - verified, differs from Contact
-    surname: c['Last Name'],
-    displayAs: `${c['First Name']} ${c['Last Name']}`.trim(),
-    jobTitle: c['Organization Title'],
+  const contactDetails = compact({
+    email: c['E-mail 1'],
+    mobilePhone: c['Phone 1'],
+  });
+  if (Object.keys(contactDetails).length > 0) out.contactDetails = contactDetails;
+  const address = compact({
     addressLine1: c['Address 1 - Street'],
     addressLine2: c['Address 1 - Extended Address'],
     town: c['Address 1 - City'],
     county: c['Address 1 - Region'],
     postcode: c['Address 1 - Postal Code'],
     country: c['Country'],
-    mobilePhone: c['Phone 1'],
-    email: c['E-mail 1'],
-    whereDidYouHear: 'Business card scan',
   });
+  if (Object.keys(address).length > 0) out.address = address;
+  return out;
+}
+
+export function toTrackerContact(c: ContactData, note = ''): Record<string, unknown> {
+  const out = trackerEntityBase(c, note);
+  if (c['Organization Name']) out.company = c['Organization Name'];
+  return out;
+}
+
+export function toTrackerCandidate(c: ContactData, note = ''): Record<string, unknown> {
+  // Resources have no `company` field; the org goes in the note instead.
+  return trackerEntityBase(c, note);
 }
 
 export function buildPushNote(c: ContactData, scannedAt: string): string {

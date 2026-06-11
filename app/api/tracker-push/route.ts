@@ -18,6 +18,8 @@ import {
 
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
+// Dedup crawl + create can take a while on serverless cold starts.
+export const maxDuration = 60;
 
 const PushRequestSchema = z.object({
   contact: ContactSchema,
@@ -104,26 +106,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const payload = entity === 'candidate' ? toTrackerCandidate(contact) : toTrackerContact(contact);
+    // The note rides inside the create payload (top-level `note` field on the
+    // Tracker object); the separate Notes endpoint 404s on this API version.
+    const note = buildPushNote(contact, new Date().toISOString().slice(0, 10));
+    const payload =
+      entity === 'candidate' ? toTrackerCandidate(contact, note) : toTrackerContact(contact, note);
     const created = await (entity === 'candidate'
       ? tracker.createCandidate(payload)
       : tracker.createContact(payload));
     const trackerId = extractRecordId(created, ['contactId', 'resourceId']);
 
-    // Note is best effort: the create already succeeded, and the Notes
-    // endpoint shape is unverified against this API version.
-    let noteOk = false;
-    if (trackerId) {
-      try {
-        await tracker.addNote(entity, trackerId, buildPushNote(contact, new Date().toISOString().slice(0, 10)));
-        noteOk = true;
-      } catch (err) {
-        console.error('tracker-push: addNote failed (create succeeded):', errMessage(err));
-      }
-    }
-
     return NextResponse.json(
-      { status: 'created', entity, trackerId, noteOk, dedupCoverage },
+      { status: 'created', entity, trackerId, dedupCoverage },
       { status: 201 }
     );
   } catch (err) {

@@ -3,6 +3,9 @@ import OpenAI from 'openai';
 import { ContactSchema, buildExtractionPrompt } from '@/lib/contact-schema';
 import { validateImageUpload } from '@/lib/upload-validation';
 
+// GPT-4o vision calls regularly take 10s+; the serverless default is too low.
+export const maxDuration = 60;
+
 // Lazy-load OpenAI client to avoid build-time initialization
 function getOpenAIClient() {
   return new OpenAI({

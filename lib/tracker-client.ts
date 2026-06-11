@@ -137,16 +137,6 @@ export class TrackerClient {
   async createCandidate(data: Record<string, unknown>): Promise<unknown> {
     return this.request('/api/v1/Resource', { method: 'POST', body: JSON.stringify(data) });
   }
-
-  // Endpoint shape is a best-effort port from virtual24 (flagged there as
-  // unverified against the JWT API). Callers treat failure as non-fatal.
-  async addNote(entity: 'contact' | 'candidate', entityId: string | number, text: string): Promise<void> {
-    const seg = entity === 'candidate' ? 'Resource' : 'Contact';
-    await this.request(`/api/v1/${seg}/${entityId}/Notes`, {
-      method: 'POST',
-      body: JSON.stringify({ text, type: 'general' }),
-    });
-  }
 }
 
 export class TrackerError extends Error {

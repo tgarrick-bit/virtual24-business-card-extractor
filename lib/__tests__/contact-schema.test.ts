@@ -110,44 +110,58 @@ describe('Tracker mappings', () => {
     return c;
   };
 
-  it('maps contact fields to the verified Tracker Contact names', () => {
-    const t = toTrackerContact(full());
+  it('maps contact fields to the verified Tracker object shape (nested contactDetails/address)', () => {
+    const t = toTrackerContact(full(), 'scan note');
     expect(t).toMatchObject({
       firstName: 'Ada',
       surname: 'Lovelace',
-      displayAs: 'Ada Lovelace',
       jobTitle: 'Chief Engineer',
       company: 'Analytical Engines',
-      addressLine1: '1 Engine Way',
-      town: 'Houston',
-      county: 'TX',
-      postcode: '77002',
-      country: 'United States',
-      mobilePhone: '(555) 123-4567',
-      email: 'ada@example.com',
       website: 'https://example.com',
-      contactSource: 'Business card scan',
+      source: 'Business card scan',
+      note: 'scan note',
+      contactDetails: {
+        email: 'ada@example.com',
+        mobilePhone: '(555) 123-4567',
+      },
+      address: {
+        addressLine1: '1 Engine Way',
+        town: 'Houston',
+        county: 'TX',
+        postcode: '77002',
+        country: 'United States',
+      },
     });
+    // A flat create payload silently drops these - they must be nested.
+    expect('email' in t).toBe(false);
+    expect('mobilePhone' in t).toBe(false);
+    expect('addressLine1' in t).toBe(false);
   });
 
   it('never maps the fabricated LinkedIn search URL to a Tracker field', () => {
-    const values = Object.values(toTrackerContact(full()));
-    expect(values.some((v) => String(v).includes('linkedin.com'))).toBe(false);
+    const t = toTrackerContact(full());
+    const flatten = (o: unknown): string[] =>
+      o && typeof o === 'object' ? Object.values(o).flatMap(flatten) : [String(o)];
+    expect(flatten(t).some((v) => v.includes('linkedin.com'))).toBe(false);
   });
 
-  it('omits empty fields entirely', () => {
+  it('omits empty fields and empty nested objects entirely', () => {
     const c = emptyContact();
     c['First Name'] = 'Ada';
     const t = toTrackerContact(c);
-    expect('email' in t).toBe(false);
-    expect('addressLine2' in t).toBe(false);
+    expect('contactDetails' in t).toBe(false);
+    expect('address' in t).toBe(false);
+    expect('company' in t).toBe(false);
+    expect('note' in t).toBe(false);
   });
 
-  it('uses lowercase firstname for candidates (verified API casing)', () => {
-    const t = toTrackerCandidate(full());
-    expect(t.firstname).toBe('Ada');
-    expect('firstName' in t).toBe(false);
-    expect(t.whereDidYouHear).toBe('Business card scan');
+  it('uses camelCase firstName for candidates (full-object casing, not the list casing)', () => {
+    const t = toTrackerCandidate(full(), 'note');
+    expect(t.firstName).toBe('Ada');
+    expect('firstname' in t).toBe(false);
+    // Resources have no company field; org rides in the note.
+    expect('company' in t).toBe(false);
+    expect(t.source).toBe('Business card scan');
   });
 });
 
