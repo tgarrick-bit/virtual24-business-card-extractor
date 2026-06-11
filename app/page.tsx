@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
-import { Upload, Download, Trash2, FileImage, AlertCircle, Brain, Eye, Linkedin, Camera, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Upload, Download, Trash2, FileImage, AlertCircle, Linkedin, Camera, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import Papa from 'papaparse';
 import {
@@ -53,7 +53,6 @@ export default function BusinessCardExtractor() {
   const [rows, setRows] = useState<Row[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [useAI, setUseAI] = useState(true);
   const [autoPush, setAutoPush] = useState(true);
   const [entity, setEntity] = useState<Entity>('contact');
   const [configWarning, setConfigWarning] = useState('');
@@ -79,6 +78,19 @@ export default function BusinessCardExtractor() {
     event.target.value = ''; // allow re-selecting the same file / next camera shot
   };
 
+  // Camera shots skip the staging list: snap -> extract -> (auto-)push.
+  // If a batch is already running, stage the shot for a manual Extract instead.
+  const handleCameraCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const imageFiles = Array.from(event.target.files || []).filter((f) => f.type.startsWith('image/'));
+    event.target.value = '';
+    if (imageFiles.length === 0) return;
+    if (isProcessing) {
+      setFiles((prev) => [...prev, ...imageFiles]);
+      return;
+    }
+    void processBatch(imageFiles);
+  };
+
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
@@ -90,32 +102,61 @@ export default function BusinessCardExtractor() {
     setConfigWarning('');
   };
 
-  const extractFromServer = async (blob: Blob, fileName: string): Promise<ContactData> => {
+  // AI Vision is the engine; OCR is an invisible automatic fallback when the
+  // AI route is down or unconfigured (it cannot help with 4xx upload errors).
+  const extractFromServer = async (
+    blob: Blob,
+    fileName: string
+  ): Promise<{ contact: ContactData; engine: 'ai' | 'ocr' }> => {
     const formData = new FormData();
     formData.append('image', blob, fileName);
 
-    const endpoint = useAI ? '/api/extract' : '/api/extract-ocr';
-    const response = await fetch(endpoint, { method: 'POST', body: formData });
+    const post = (endpoint: string) => fetch(endpoint, { method: 'POST', body: formData });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      if (response.status === 503) {
-        setConfigWarning(errorData.error || 'Server extraction is not configured.');
-      }
+    let response: Response | null = null;
+    try {
+      response = await post('/api/extract');
+    } catch {
+      response = null;
+    }
+    if (response?.ok) {
+      return { contact: (await response.json()).data as ContactData, engine: 'ai' };
+    }
+
+    const aiStatus = response?.status ?? 0;
+    if (aiStatus >= 400 && aiStatus < 500 && aiStatus !== 408 && aiStatus !== 429) {
+      const errorData = await response!.json().catch(() => ({}));
       throw new Error(errorData.error || 'Failed to extract data');
     }
-    const result = await response.json();
-    return result.data as ContactData;
+    if (aiStatus === 503) {
+      setConfigWarning('AI extraction is unavailable - used basic text recognition instead.');
+    }
+
+    const ocrResponse = await post('/api/extract-ocr');
+    if (!ocrResponse.ok) {
+      const errorData = await ocrResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to extract data');
+    }
+    return { contact: (await ocrResponse.json()).data as ContactData, engine: 'ocr' };
   };
 
   const processImages = async () => {
     if (files.length === 0 || isProcessing) return;
-
     const batch = [...files];
+    setFiles([]);
+    await processBatch(batch);
+  };
+
+  // Appends to the existing rows so consecutive single-card camera scans
+  // accumulate instead of wiping the previous results.
+  const processBatch = async (batch: File[]) => {
+    if (batch.length === 0 || isProcessing) return;
+
     setIsProcessing(true);
     setProgress(0);
     setConfigWarning('');
 
+    const offset = rowsRef.current.length;
     const initial: Row[] = batch.map((file) => ({
       contact: emptyContact(),
       sourceFile: file.name,
@@ -123,9 +164,9 @@ export default function BusinessCardExtractor() {
       via: '',
       push: 'idle',
     }));
-    setRows(initial);
-    rowsRef.current = initial;
-    setFiles([]);
+    const appended = [...rowsRef.current, ...initial];
+    setRows(appended);
+    rowsRef.current = appended;
 
     let done = 0;
     let next = 0;
@@ -144,8 +185,8 @@ export default function BusinessCardExtractor() {
               contact && contact['First Name'] && (contact['E-mail 1'] || contact['Phone 1']);
             if (!qrComplete) {
               const extracted = await extractFromServer(prepared.blob, file.name);
-              contact = contact ? mergeContacts(contact, extracted) : extracted;
-              via = via ? `${via}+${useAI ? 'ai' : 'ocr'}` : useAI ? 'ai' : 'ocr';
+              contact = contact ? mergeContacts(contact, extracted.contact) : extracted.contact;
+              via = via ? `${via}+${extracted.engine}` : extracted.engine;
             }
             const finalContact = { ...(contact as ContactData) };
             if (prepared.qrUrl) {
@@ -160,7 +201,7 @@ export default function BusinessCardExtractor() {
             }
 
             const blank = isBlankContact(finalContact);
-            patchRow(i, {
+            patchRow(offset + i, {
               contact: finalContact,
               status: blank ? 'failed' : 'ok',
               via,
@@ -169,10 +210,10 @@ export default function BusinessCardExtractor() {
             });
 
             if (!blank && autoPushRef.current) {
-              await pushContact(i, finalContact, 'create');
+              await pushContact(offset + i, finalContact, 'create');
             }
           } catch (error) {
-            patchRow(i, {
+            patchRow(offset + i, {
               status: 'failed',
               extractError: error instanceof Error ? error.message : 'Unknown error',
               push: 'blocked',
@@ -362,14 +403,7 @@ export default function BusinessCardExtractor() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4 bg-muted rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Eye className="h-4 w-4" />
-                    <Label htmlFor="extraction-mode">OCR</Label>
-                    <Switch id="extraction-mode" checked={useAI} onCheckedChange={setUseAI} />
-                    <Brain className="h-4 w-4" />
-                    <Label htmlFor="extraction-mode">AI Vision</Label>
-                  </div>
+                <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 p-4 bg-muted rounded-lg">
                   <div className="flex items-center gap-2">
                     <Switch id="auto-push" checked={autoPush} onCheckedChange={setAutoPush} />
                     <Label htmlFor="auto-push">Auto-push to Tracker</Label>
@@ -396,7 +430,7 @@ export default function BusinessCardExtractor() {
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  onChange={handleFileUpload}
+                  onChange={handleCameraCapture}
                   className="hidden"
                 />
                 <Input
@@ -532,7 +566,7 @@ export default function BusinessCardExtractor() {
                         <TableHead>Phone</TableHead>
                         <TableHead>Organization</TableHead>
                         <TableHead>Title</TableHead>
-                        <TableHead>LinkedIn</TableHead>
+                        <TableHead className="hidden md:table-cell">LinkedIn</TableHead>
                         <TableHead>Tracker</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -553,7 +587,7 @@ export default function BusinessCardExtractor() {
                               <TableCell>{editableCell(row, index, 'Phone 1')}</TableCell>
                               <TableCell>{editableCell(row, index, 'Organization Name')}</TableCell>
                               <TableCell>{editableCell(row, index, 'Organization Title')}</TableCell>
-                              <TableCell className="max-w-28">
+                              <TableCell className="hidden max-w-28 md:table-cell">
                                 {row.contact['LinkedIn Profile'] && (
                                   <a
                                     href={row.contact['LinkedIn Profile']}
