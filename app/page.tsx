@@ -441,38 +441,44 @@ export default function BusinessCardExtractor() {
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="mx-auto w-full max-w-md space-y-3">
                   <Button
                     onClick={() => cameraInputRef.current?.click()}
-                    className="flex items-center gap-2 bg-[#e31c79] text-white hover:bg-[#c31666]"
+                    disabled={isProcessing}
+                    className="h-14 w-full rounded-xl bg-[#e31c79] text-base font-semibold text-white shadow-lg shadow-[#e31c79]/25 transition-transform hover:bg-[#c31666] active:scale-[0.98]"
                   >
-                    <Camera className="h-4 w-4" />
-                    Scan with Camera
+                    <Camera className="mr-2 h-5 w-5" />
+                    Scan a Card
                   </Button>
-                  <Button
-                    onClick={() => fileInputRef.current?.click()}
-                    variant="outline"
-                    className="flex items-center gap-2 border-[#e31c79] text-[#e31c79] hover:bg-[#e31c79]/5"
-                  >
-                    <Upload className="h-4 w-4" />
-                    Select Images
-                  </Button>
-                  <Button
-                    onClick={processImages}
-                    disabled={files.length === 0 || isProcessing}
-                    className="flex items-center gap-2 bg-[#e31c79] text-white hover:bg-[#c31666]"
-                  >
-                    <FileImage className="h-4 w-4" />
-                    {isProcessing ? 'Processing...' : `Extract${files.length > 0 ? ` (${files.length})` : ''}`}
-                  </Button>
-                  <Button
-                    onClick={clearAll}
-                    variant="outline"
-                    className="flex items-center gap-2 border-[#e31c79] text-[#e31c79] hover:bg-[#e31c79]/5"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Clear All
-                  </Button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      variant="outline"
+                      className="h-11 rounded-xl border-[#e31c79]/40 text-[#e31c79] hover:bg-[#e31c79]/5"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      From Photos
+                    </Button>
+                    <Button
+                      onClick={clearAll}
+                      disabled={isProcessing || (files.length === 0 && rows.length === 0)}
+                      variant="outline"
+                      className="h-11 rounded-xl border-[#33393c]/20 text-[#33393c]/70 hover:bg-[#33393c]/5"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Clear All
+                    </Button>
+                  </div>
+                  {files.length > 0 && (
+                    <Button
+                      onClick={processImages}
+                      disabled={isProcessing}
+                      className="h-12 w-full rounded-xl bg-[#e31c79] text-white hover:bg-[#c31666]"
+                    >
+                      <FileImage className="mr-2 h-4 w-4" />
+                      {isProcessing ? 'Processing...' : `Extract ${files.length} card${files.length > 1 ? 's' : ''}`}
+                    </Button>
+                  )}
                 </div>
 
                 {files.length > 0 && (
