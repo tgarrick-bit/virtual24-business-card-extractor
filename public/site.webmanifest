@@ -1,0 +1,21 @@
+{
+  "name": "West End Card Scanner",
+  "short_name": "Card Scanner",
+  "description": "Scan business cards and push contacts straight into the ATS Tracker.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e31c79",
+  "icons": [
+    {
+      "src": "/we-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/we-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

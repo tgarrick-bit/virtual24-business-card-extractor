@@ -1,122 +1,56 @@
-# Business Card Contact Extractor
+# West End Card Scanner
 
-A **Node.js / Next.js** web application that lets you upload photos of business cards, automatically extracts contact information, searches for a LinkedIn profile, and exports the results to a CSV file ready for import into Google Contacts.
+A Next.js web app for the West End Workforce team: photograph a business card on your phone and the contact is extracted and pushed straight into the ATS Tracker (TrackerRMS). CSV export (Google Contacts format) remains as a backup path.
 
 ## Features
 
-- **Image upload** (multiple JPG/PNG files at once)
-- **Data extraction** using either:
-  - **AI Vision** (OpenAI GPT‑4o) for high‑accuracy extraction, **or**
-  - **OCR** (Tesseract.js) with advanced regex parsing
-- **LinkedIn profile search** – generates a LinkedIn search URL for each contact
-- **CSV export** compatible with Google Contacts import template
-- Fully responsive UI built with Tailwind CSS and Radix UI components
-
-## Prerequisites
-
-**For Local Development:**
-- Node.js (v18 or later) and npm (or yarn/pnpm) installed
-
-**For Docker:**
-- Docker and Docker Compose installed
-
-**For AI Vision Mode:**
-- An OpenAI API key (required for AI Vision mode). You can obtain one at https://platform.openai.com/api-keys.
+- **Phone-first capture** - "Scan with Camera" opens the rear camera; installable to the home screen (web manifest)
+- **QR code aware** - vCard/MeCard QR codes on cards are decoded client-side (jsQR) and trusted over OCR; a complete vCard skips the AI call entirely
+- **Data extraction** via **AI Vision** (OpenAI GPT-4o, JSON mode + schema validation) or **OCR** (Tesseract.js + heuristic parser)
+- **ATS Tracker push** - creates a Contact (or Candidate) through `/api/tracker-push` with duplicate detection, per-row status, retry, and "push anyway"; auto-push after extraction is on by default
+- **Review and fix** - extracted rows are editable in place before pushing
+- **Client-side downscaling** - photos are resized to ~1400px JPEG before upload (faster on conference Wi-Fi, cheaper AI calls)
+- **CSV export** with formula escaping, excluding failed extractions
+- **Team access gate** - one shared access code (`BCX_ACCESS_CODE`), entered once per device, stored as a signed HttpOnly cookie
 
 ## Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/cjj/business-card-extractor
-   cd business-card-extractor
-   ```
-2. **Install dependencies**
-   ```bash
-   npm install   # or `yarn` / `pnpm install`
-   ```
-3. **Configure environment variables**
-   Copy the example file and configure your API key:
-   ```bash
-   cp .env.example .env.local
-   ```
-   Then edit `.env.local` and add your OpenAI API key:
-   ```env
-   OPENAI_API_KEY=your-openai-api-key   # required for AI Vision mode
-   ```
-   The API key is optional if you plan to use OCR-only mode.
-
-## Running the Application Locally
-
-Start the development server:
 ```bash
-npm run dev   # or `yarn dev` / `pnpm dev`
-```
-The app will be available at **http://localhost:3000**.
-
-### Using the UI
-1. Click **Select Images** to choose one or more business‑card photos.
-2. Toggle the **AI Vision** switch to choose between AI (recommended) or OCR extraction.
-3. Press **Extract** – the app will process each image, fetch a LinkedIn search link, and display the results in a table.
-4. Click **Download CSV** to export all contacts. You should be able to use this file directly to import into Google Contacts. 
-
-## API Endpoints
-
-- `POST /api/extract` – extracts contact data using OpenAI GPT‑4o (requires `OPENAI_API_KEY`).
-- `POST /api/extract-ocr` – extracts contact data using Tesseract OCR with custom parsing.
-- `POST /api/linkedin-search` – returns a LinkedIn search URL for a given name and company.
-
-## Running with Docker
-
-Alternatively, you can run the application using Docker and Docker Compose. The Docker setup uses an optimized production build with Next.js standalone mode for minimal image size (~300MB) and fast startup.
-
-### Prerequisites
-- Docker and Docker Compose installed
-- `.env.local` file configured (see Setup section above)
-
-### Quick Start
-
-1.  **Build and run the container:**
-    ```bash
-    docker-compose up -d --build
-    ```
-
-2.  **Access the application:**
-    - Open your browser to **http://localhost:3000**
-
-### Managing the Container
-
-**View logs:**
-```bash
-docker logs business-card-extractor-app-1
+cp .env.example .env.local   # then fill in the values
+npm ci
+npm run dev
 ```
 
-**Stop the application:**
+See `.env.example` for the full environment reference. The deployment-critical ones:
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | AI Vision extraction (gpt-4o) |
+| `TRACKER_API_TOKEN` | ATS Tracker bearer token (exchanged server-side for a JWT) |
+| `BCX_ACCESS_CODE` | Team access code - **required on any deployed instance** |
+| `BCX_SESSION_SECRET` | Cookie-signing secret (`openssl rand -hex 32`) |
+
+Without `BCX_ACCESS_CODE` the app runs open (local dev convenience). Never deploy it that way: the extract routes spend OpenAI credits and the push route writes into the live ATS.
+
+## Tracker integration notes
+
+- Auth: `POST /api/Auth/ExchangeToken` swaps the bearer token for a ~7-day JWT, cached in memory and refreshed within an hour of expiry.
+- Field names were verified against live API responses (2026-06-10). Casing trap: Contacts use `firstName`, Candidates use `firstname`.
+- Tracker's search endpoints ignore text filters, so duplicate detection crawls the contact list (10 records/page, bounded) and matches email/phone locally. Responses expose `dedupCoverage: full | partial | skipped` honestly.
+- The card photo itself is **not** stored anywhere - the Tracker API (as used here) has no attachment upload; key details land in a note on the created record instead.
+
+## Testing & CI
+
 ```bash
-docker-compose down
+npm test         # jest unit tests (schema, Tracker mapping, vCard/QR, OCR parser)
+npm run lint
+npx tsc --noEmit
 ```
 
-**Rebuild after code changes:**
-```bash
-docker-compose up -d --build
-```
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, type-check, tests, and build on every push/PR to main.
 
-### Notes
-- The container uses a non-root user for enhanced security
-- Environment variables are loaded from `.env.local` at runtime
-- OCR mode works without an API key; AI Vision mode requires `OPENAI_API_KEY`
-- The production build uses multi-stage Docker builds for optimization
-
-## Building for Production
+## Docker
 
 ```bash
-npm run build   # creates an optimized production build
-npm start       # runs the production server
+docker compose up --build   # serves on port 3000, reads .env.local
 ```
-
-## License
-
-This project is open‑source and available under the MIT License.
-
----
-
-*Built with Next.js 15, Tailwind CSS, Radix UI, OpenAI, and Tesseract.js.*

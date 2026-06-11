@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "jest"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -43,6 +44,7 @@
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.544.0",
     "motion": "^12.23.13",
     "next": "15.5.3",
