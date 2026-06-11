@@ -381,7 +381,7 @@ export default function BusinessCardExtractor() {
           </h1>
           <p className="text-sm text-[#33393c]/70 max-w-xl">
             Snap a business card and the contact lands in the ATS Tracker.
-            QR codes on cards are read automatically; CSV export stays available as a backup.
+            QR codes on cards are read automatically.
           </p>
         </div>
 
