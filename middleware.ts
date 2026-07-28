@@ -8,11 +8,20 @@ import { SESSION_COOKIE, verifySessionValue } from '@/lib/session';
 const PUBLIC_PATHS = ['/login', '/api/login'];
 
 export async function middleware(request: NextRequest) {
-  const accessCode = process.env.BCX_ACCESS_CODE;
-  if (!accessCode) return NextResponse.next();
-
   const { pathname } = request.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname === p)) return NextResponse.next();
+
+  const accessCode = process.env.BCX_ACCESS_CODE;
+  if (!accessCode) {
+    // Unset means "open" in development only. A production deploy that forgets
+    // the variable used to serve everything with no gate at all (2026-07-28
+    // audit, fail-open finding); now it fails closed instead.
+    if (process.env.NODE_ENV !== 'production') return NextResponse.next();
+    return NextResponse.json(
+      { error: 'access_not_configured', detail: 'BCX_ACCESS_CODE is not set.' },
+      { status: 503 }
+    );
+  }
 
   const secret = process.env.BCX_SESSION_SECRET || accessCode;
   const ok = await verifySessionValue(secret, request.cookies.get(SESSION_COOKIE)?.value);
